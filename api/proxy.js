@@ -1,18 +1,25 @@
-export default async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+export const config = { runtime: 'edge' };
+ 
+export default async function handler(req) {
+  const corsHeaders = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type',
+  };
  
   if (req.method === 'OPTIONS') {
-    return res.status(200).end();
+    return new Response(null, { status: 200, headers: corsHeaders });
   }
  
   if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' });
+    return new Response(JSON.stringify({ error: 'Method not allowed' }), {
+      status: 405, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    });
   }
  
   try {
-    const { system, messages } = req.body;
+    const body = await req.json();
+    const { system, messages } = body;
  
     const geminiContents = messages.map(m => ({
       role: m.role === 'assistant' ? 'model' : 'user',
@@ -28,7 +35,7 @@ export default async function handler(req, res) {
       }
     };
  
-    const response = await fetch(
+    const geminiRes = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${process.env.GEMINI_KEY}`,
       {
         method: 'POST',
@@ -37,16 +44,22 @@ export default async function handler(req, res) {
       }
     );
  
-    const data = await response.json();
-    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "I'm here. Take your time.";
+    const data = await geminiRes.json();
+    console.log('Gemini response:', JSON.stringify(data));
  
-    return res.status(200).json({
-      content: [{ type: 'text', text }]
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "hey, i'm here with you.";
+ 
+    return new Response(JSON.stringify({ content: [{ type: 'text', text }] }), {
+      status: 200,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     });
  
   } catch (err) {
-    console.error('Proxy error:', err);
-    return res.status(500).json({ error: 'Something went wrong' });
+    console.error('Proxy error:', err.message);
+    return new Response(JSON.stringify({ error: err.message }), {
+      status: 500,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    });
   }
 }
  
